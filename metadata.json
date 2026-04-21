@@ -1,0 +1,6 @@
+{
+  "name": "Classroom Reservation System",
+  "description": "A system to book short-term and long-term classrooms, users, and manage unbookable slots.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

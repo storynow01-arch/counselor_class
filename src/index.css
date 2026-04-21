@@ -1,0 +1,11 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Google Sans", sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #F5F5F4; /* Wait, using tailwind bg class in app is fine */
+}
