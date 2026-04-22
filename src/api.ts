@@ -124,6 +124,11 @@ async function handleMockAction(action: string, payload: any) {
       saveDb(db);
       return { success: true };
     }
+    case "deleteAllBookings": {
+      db.bookings = [];
+      saveDb(db);
+      return { success: true };
+    }
     default:
       return { success: false, error: "Unknown action" };
   }

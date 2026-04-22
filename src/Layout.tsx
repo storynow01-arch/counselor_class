@@ -1,6 +1,6 @@
 import { Outlet, Navigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
-import { LogOut, CalendarDays, Settings, ShieldCheck } from "lucide-react";
+import { LogOut, CalendarDays, Settings, ShieldCheck, LayoutGrid, Search as SearchIcon } from "lucide-react";
 import clsx from "clsx";
 
 export default function Layout() {
@@ -13,6 +13,8 @@ export default function Layout() {
 
   const navLinks = [
     { name: "預約系統", path: "/", icon: CalendarDays },
+    { name: "預約總表", path: "/overall", icon: LayoutGrid },
+    { name: "空堂查詢", path: "/search", icon: SearchIcon },
     ...(user.role === "admin"
       ? [{ name: "系統管理", path: "/admin", icon: Settings }]
       : []),

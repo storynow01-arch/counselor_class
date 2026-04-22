@@ -41,14 +41,15 @@ const getBookingStyles = (booking: Booking, useBatch = false) => {
 };
 
 const PERIODS = [
-  { id: 1, name: "第 1 節 (08:10-09:00)" },
-  { id: 2, name: "第 2 節 (09:10-10:00)" },
-  { id: 3, name: "第 3 節 (10:10-11:00)" },
-  { id: 4, name: "第 4 節 (11:10-12:00)" },
-  { id: 5, name: "第 5 節 (13:10-14:00)" },
-  { id: 6, name: "第 6 節 (14:10-15:00)" },
-  { id: 7, name: "第 7 節 (15:10-16:00)" },
-  { id: 8, name: "第 8 節 (16:10-17:00)" },
+  { id: 1, name: "第 1 節 (08:00-08:50)" },
+  { id: 2, name: "第 2 節 (09:00-09:50)" },
+  { id: 3, name: "第 3 節 (10:00-10:50)" },
+  { id: 4, name: "第 4 節 (11:00-11:50)" },
+  { id: 5, name: "午休時間 (12:20-13:10)" },
+  { id: 6, name: "第 5 節 (13:20-14:10)" },
+  { id: 7, name: "第 6 節 (14:20-15:10)" },
+  { id: 8, name: "第 7 節 (15:20-16:10)" },
+  { id: 9, name: "第 8 節 (16:20-17:10)" },
 ];
 
 export default function Dashboard() {
@@ -75,6 +76,7 @@ export default function Dashboard() {
   const [isListModalOpen, setIsListModalOpen] = useState(false);
   const [listBookings, setListBookings] = useState<Booking[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
 
   const startDate = startOfWeek(currentDate, { weekStartsOn: 1 }); // Monday
   const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(startDate, i));
@@ -187,28 +189,32 @@ export default function Dashboard() {
     try {
       // Generate a batch ID for this group of bookings
       const batchId = Date.now().toString() + Math.random().toString(36).substring(7);
-
-      // Create a booking for each selected slot
-      await Promise.all(
-        selectedSlots.map(async (slot) => {
-          const res = await apiCall("addBooking", {
-            classroomId: selectedClassroom,
-            type: "short",
-            date: slot.date,
-            period: slot.period,
-            batchId,
-            ...bookingFormData
-          });
-          if (!res.success) {
-            throw new Error(res.error || `預約 ${slot.date} 第 ${slot.period} 節失敗`);
-          }
-        })
-      );
       
+      const total = selectedSlots.length;
+      setProgress({ current: 0, total });
+
+      // Create a booking for each selected slot sequentially to avoid race conditions
+      for (const slot of selectedSlots) {
+        const res = await apiCall("addBooking", {
+          classroomId: selectedClassroom,
+          type: "short",
+          date: slot.date,
+          period: slot.period,
+          batchId,
+          ...bookingFormData
+        });
+        if (!res.success) {
+          throw new Error(res.error || `預約 ${slot.date} ${PERIODS.find(p => p.id === Number(slot.period))?.name.split(" (")[0] || `第 ${slot.period} 節`} 失敗`);
+        }
+        setProgress(prev => prev ? { ...prev, current: prev.current + 1 } : null);
+      }
+      
+      setProgress(null);
       setIsModalOpen(false);
       setSelectedSlots([]);
       fetchSchedule();
     } catch(err: any) {
+      setProgress(null);
       alert(err.message);
       // Refresh schedule anyway to show what succeeded
       fetchSchedule();
@@ -257,6 +263,40 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Progress Overlay */}
+      {progress && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] backdrop-blur-sm">
+          <div className="bg-white rounded-[24px] p-8 max-w-sm w-full shadow-2xl text-center space-y-6 animate-in zoom-in-95 duration-200">
+            <div className="relative w-24 h-24 mx-auto">
+              <svg className="w-full h-full transform -rotate-90">
+                <circle
+                  cx="48" cy="48" r="40"
+                  stroke="#F5F5F4" strokeWidth="8" fill="transparent"
+                />
+                <circle
+                  cx="48" cy="48" r="40"
+                  stroke="#4F46E5" strokeWidth="8" fill="transparent"
+                  strokeDasharray={2 * Math.PI * 40}
+                  strokeDashoffset={2 * Math.PI * 40 * (1 - progress.current / progress.total)}
+                  strokeLinecap="round"
+                  className="transition-all duration-300"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center font-bold text-stone-700">
+                {Math.round((progress.current / progress.total) * 100)}%
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-stone-900">正在處理中...</h3>
+              <p className="text-stone-500 mt-2">請稍候，正在寫入預約資料</p>
+            </div>
+            <div className="text-sm font-medium text-[#4F46E5] bg-indigo-50 py-2 px-4 rounded-full inline-block">
+              {progress.current} / {progress.total} 筆完成
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-stone-900 border-l-4 border-[#4F46E5] pl-3">教室預約</h1>
         <div className="flex items-center space-x-3">
@@ -372,15 +412,22 @@ export default function Dashboard() {
                            {isLocked ? (
                               <div className="text-stone-400 text-sm font-medium">鎖定</div>
                            ) : booking ? (
-                              <div className="flex flex-col h-full items-start">
+                              <div className="flex flex-col h-full items-start w-full relative group/item">
                                 <div className={clsx("flex items-center gap-1.5 mb-1 text-sm font-bold leading-tight", style?.text)}>
                                   {Icon && <Icon className="w-3.5 h-3.5" />}
                                   <span className="truncate">{booking.courseContent || "已預約"}</span>
                                 </div>
-                                <div className={clsx("text-xs flex flex-col space-y-0.5", style?.accent || "text-stone-500")}>
+                                <div className={clsx("text-xs flex flex-col space-y-0.5 text-left", style?.accent || "text-stone-500")}>
                                   <span>預約者: {booking.bookerName}</span>
                                   {booking.userName && <span className="opacity-80 truncate">使用者: {booking.userName}</span>}
                                 </div>
+                                {(user?.role === 'admin' || user?.username === booking.bookerName) && (
+                                  <div className="absolute inset-0 bg-white/90 backdrop-blur-sm opacity-0 group-hover/item:opacity-100 flex items-center justify-center rounded transition-opacity duration-200">
+                                    <span className="text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-full shadow-sm whitespace-nowrap">
+                                      點選修改 / 刪除
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                            ) : isSelected ? (
                               <div className="text-[#FB923C] text-xs font-bold flex flex-col items-center justify-center h-full">
@@ -432,7 +479,9 @@ export default function Dashboard() {
                 {selectedSlots.map((s, idx) => (
                    <div key={idx} className="flex justify-between items-center bg-white px-2 py-1.5 rounded-[8px] border border-[#E7E5E4]">
                      <span className="font-medium text-stone-700">{s.date}</span>
-                     <span className="bg-orange-50 text-[#FB923C] px-2 py-0.5 rounded-[8px] text-xs font-semibold">第 {s.period} 節</span>
+                     <span className="bg-orange-50 text-[#FB923C] px-2 py-0.5 rounded-[8px] text-xs font-semibold">
+                       {PERIODS.find(p => p.id === Number(s.period))?.name.split(" (")[0] || `第 ${s.period} 節`}
+                     </span>
                    </div>
                 ))}
               </div>
@@ -497,7 +546,7 @@ export default function Dashboard() {
             <form className="space-y-4">
               <div className="text-sm text-stone-600 bg-stone-50 p-3 rounded-[12px] border border-[#E7E5E4]">
                 <div><span className="font-medium text-stone-900">日期：</span> {editTarget.date}</div>
-                <div><span className="font-medium text-stone-900">節次：</span> 第 {editTarget.period} 節</div>
+                <div><span className="font-medium text-stone-900">節次：</span> {PERIODS.find(p => p.id === Number(editTarget.period))?.name.split(" (")[0] || `第 ${editTarget.period} 節`}</div>
                 {relatedBookings.length > 1 && (
                   <div className="mt-2 text-[#FB923C] font-medium text-xs">
                     * 此筆資料屬於同批次預約 (共有 {relatedBookings.length} 節)
@@ -656,7 +705,7 @@ export default function Dashboard() {
                                {b.date < format(new Date(), "yyyy-MM-dd") && <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded inline-block w-fit mt-0.5">已過期</span>}
                              </div>
                            </td>
-                          <td className="p-3 text-[#FB923C] font-bold whitespace-nowrap">第 {b.period} 節</td>
+                          <td className="p-3 text-[#FB923C] font-bold whitespace-nowrap">{PERIODS.find(p => p.id === Number(b.period))?.name.split(" (")[0] || `第 ${b.period} 節`}</td>
                           <td className="p-3 text-stone-800 font-medium">{b.courseContent}</td>
                           <td className="p-3">
                             <div className="flex flex-col">
