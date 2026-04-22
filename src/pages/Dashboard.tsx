@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { format, startOfWeek, addDays, subWeeks, addWeeks, isSameDay, subMonths, addMonths } from "date-fns";
 import { zhTW } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Plus, MapPin, ChevronsLeft, ChevronsRight, List } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, MapPin, ChevronsLeft, ChevronsRight, List, Bookmark, Circle, Square, Minus, Target } from "lucide-react";
 import { useAuth } from "../AuthContext";
 import clsx from "clsx";
 
@@ -10,6 +10,35 @@ import { apiCall } from "../api";
 type Classroom = { id: string; name: string };
 type Booking = { id: string; classroomId: string; date: string; period: number; type: string; bookerName: string; courseContent: string; userName: string; batchId?: string };
 type Lock = { id: string; classroomId: string; date: string; period: number };
+
+const getBookingStyles = (booking: Booking, useBatch = false) => {
+  // Use bookerName for the main grid as requested, or batchId for list if specifically needed
+  const str = (useBatch && booking.batchId) ? booking.batchId : (booking.bookerName || booking.id);
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const colors = [
+    { text: "text-[#4338CA]", accent: "text-[#6366F1]", border: "border-[#4338CA]" }, // Indigo
+    { text: "text-[#BE185D]", accent: "text-[#EC4899]", border: "border-[#BE185D]" }, // Pink
+    { text: "text-[#15803D]", accent: "text-[#22C55E]", border: "border-[#15803D]" }, // Green
+    { text: "text-[#C2410C]", accent: "text-[#F97316]", border: "border-[#C2410C]" }, // Orange
+    { text: "text-[#6D28D9]", accent: "text-[#8B5CF6]", border: "border-[#6D28D9]" }, // Violet
+    { text: "text-[#0F766E]", accent: "text-[#14B8A6]", border: "border-[#0F766E]" }, // Teal
+    { text: "text-[#A16207]", accent: "text-[#EAB308]", border: "border-[#A16207]" }, // Yellow/Amber
+  ];
+
+  const icons = [Bookmark, Circle, Square, Minus, Target];
+  
+  const colorIndex = Math.abs(hash) % colors.length;
+  const iconIndex = Math.abs(hash) % icons.length;
+  
+  return {
+    ...colors[colorIndex],
+    Icon: icons[iconIndex]
+  };
+};
 
 const PERIODS = [
   { id: 1, name: "第 1 節 (08:10-09:00)" },
@@ -78,9 +107,17 @@ export default function Dashboard() {
         role: user?.role 
       });
       if (res.success) {
-        const sorted = (res.bookings || []).sort((a:Booking, b:Booking) => {
-           if(a.date !== b.date) return a.date.localeCompare(b.date);
-           return Number(a.period) - Number(b.period);
+        const todayStr = format(new Date(), "yyyy-MM-dd");
+        const sorted = (res.bookings || []).sort((a: Booking, b: Booking) => {
+          const isExpA = a.date < todayStr;
+          const isExpB = b.date < todayStr;
+          
+          if (isExpA !== isExpB) {
+            return isExpA ? 1 : -1; // Current/Future bookings first
+          }
+          
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          return Number(a.period) - Number(b.period);
         });
         setListBookings(sorted);
       }
@@ -312,56 +349,51 @@ export default function Dashboard() {
                   <td className="border-b border-r border-[#E7E5E4] p-2 text-xs font-medium text-stone-500 bg-stone-50 whitespace-normal">
                     {name}
                   </td>
-                  {weekDays.map((day, i) => {
-                    const dateStr = format(day, "yyyy-MM-dd");
-                    const booking = bookings.find(b => b.date === dateStr && Number(b.period) === id);
-                    const isLocked = locks.some(l => l.date === dateStr && Number(l.period) === id);
-                    const isSelected = selectedSlots.some(s => s.date === dateStr && s.period === id);
+                    {weekDays.map((day, i) => {
+                      const dateStr = format(day, "yyyy-MM-dd");
+                      const booking = bookings.find(b => b.date === dateStr && Number(b.period) === id);
+                      const isLocked = locks.some(l => l.date === dateStr && Number(l.period) === id);
+                      const isSelected = selectedSlots.some(s => s.date === dateStr && s.period === id);
+                      const style = booking ? getBookingStyles(booking, false) : null;
+                      const Icon = style?.Icon;
 
-                    return (
-                      <td 
-                        key={i} 
-                        className={clsx(
-                          "border-b border-[#E7E5E4] p-2 h-16 transition-colors relative group",
-                          i !== 6 && "border-r",
-                          isLocked ? "bg-red-50/80 cursor-not-allowed" :
-                          booking ? clsx(booking.type === 'long' ? "bg-stone-100" : "bg-indigo-50/80", (user?.role === 'admin' || user?.username === booking.bookerName) ? "cursor-pointer" : "") :
-                          isSelected ? "bg-orange-50 ring-2 ring-[#FB923C] ring-inset cursor-pointer" :
-                          "hover:bg-stone-50 cursor-pointer"
-                        )}
-                        onClick={() => handleSlotClick(day, id)}
-                      >
-                         {isLocked ? (
-                            <div className="text-stone-400 text-xs font-medium">鎖定 (不可預約)</div>
-                         ) : booking ? (
-                            <div className="flex flex-col h-full justify-center">
-                              <div className={clsx("text-xs font-bold leading-tight", booking.type === 'long' ? "text-stone-700" : "text-[#4F46E5]")}>
-                                {booking.courseContent || "已預約"}
-                              </div>
-                              <div className="text-[10px] text-stone-500 mt-1 flex flex-col space-y-0.5">
-                                <span>預約者: {booking.bookerName}</span>
-                                {booking.userName && <span>使用者: {booking.userName}</span>}
-                              </div>
-                              {(user?.role === "admin" || user?.username === booking.bookerName) && (
-                                <div className="absolute inset-0 bg-indigo-900/5 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-[8px]">
-                                  <span className="bg-white/90 text-[#4F46E5] text-xs font-bold px-2 py-1 rounded-[8px] shadow-sm border border-indigo-200">
-                                    🔧 管理
-                                  </span>
+                      return (
+                        <td 
+                          key={i} 
+                          className={clsx(
+                            "border-b border-[#E7E5E4] p-2 h-20 transition-colors relative group",
+                            i !== 6 && "border-r",
+                            isLocked ? "bg-red-50/20 cursor-not-allowed" :
+                            isSelected ? "bg-orange-50 ring-2 ring-[#FB923C] ring-inset cursor-pointer" :
+                            "hover:bg-stone-50 cursor-pointer"
+                          )}
+                          onClick={() => handleSlotClick(day, id)}
+                        >
+                           {isLocked ? (
+                              <div className="text-stone-400 text-sm font-medium">鎖定</div>
+                           ) : booking ? (
+                              <div className="flex flex-col h-full items-start">
+                                <div className={clsx("flex items-center gap-1.5 mb-1 text-sm font-bold leading-tight", style?.text)}>
+                                  {Icon && <Icon className="w-3.5 h-3.5" />}
+                                  <span className="truncate">{booking.courseContent || "已預約"}</span>
                                 </div>
-                              )}
-                            </div>
-                         ) : isSelected ? (
-                            <div className="text-[#FB923C] text-xs font-bold flex flex-col items-center justify-center h-full">
-                              已選取
-                            </div>
-                         ) : (
-                           <div className="opacity-0 group-hover:opacity-100 text-stone-300 flex justify-center w-full">
-                              <Plus className="w-5 h-5 text-stone-400" />
-                           </div>
-                         )}
-                      </td>
-                    );
-                  })}
+                                <div className={clsx("text-xs flex flex-col space-y-0.5", style?.accent || "text-stone-500")}>
+                                  <span>預約者: {booking.bookerName}</span>
+                                  {booking.userName && <span className="opacity-80 truncate">使用者: {booking.userName}</span>}
+                                </div>
+                              </div>
+                           ) : isSelected ? (
+                              <div className="text-[#FB923C] text-xs font-bold flex flex-col items-center justify-center h-full">
+                                已選取
+                              </div>
+                           ) : (
+                             <div className="opacity-0 group-hover:opacity-100 text-stone-300 flex justify-center w-full">
+                                <Plus className="w-5 h-5 text-stone-400" />
+                             </div>
+                           )}
+                        </td>
+                      );
+                    })}
                 </tr>
               ))}
             </tbody>
@@ -610,15 +642,27 @@ export default function Dashboard() {
                    ) : listBookings.map(b => {
                       const canEdit = user?.role === 'admin' || user?.username === b.bookerName;
                       const cName = classrooms.find(c => c.id === b.classroomId)?.name || '未知教室';
-                      return (
-                        <tr key={b.id} className="hover:bg-stone-50 transition-colors">
-                          <td className="p-3 px-4 whitespace-nowrap text-[#4F46E5] font-bold">{cName}</td>
-                          <td className="p-3 whitespace-nowrap text-stone-700 font-medium">{b.date}</td>
+                      const style = getBookingStyles(b, true); 
+                      const Icon = style.Icon;
+                       return (
+                         <tr key={b.id} className={clsx("transition-colors border-b border-[#E7E5E4]", b.date < format(new Date(), "yyyy-MM-dd") ? "bg-stone-50/50 opacity-60" : "hover:bg-stone-50")}>
+                           <td className={clsx("p-3 px-4 whitespace-nowrap font-bold flex items-center gap-2", b.date < format(new Date(), "yyyy-MM-dd") ? "text-stone-400" : style.text)}>
+                             <Icon className="w-4 h-4" />
+                             {cName}
+                           </td>
+                          <td className="p-3 whitespace-nowrap text-stone-700 font-medium">
+                             <div className="flex flex-col">
+                               <span>{b.date}</span>
+                               {b.date < format(new Date(), "yyyy-MM-dd") && <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded inline-block w-fit mt-0.5">已過期</span>}
+                             </div>
+                           </td>
                           <td className="p-3 text-[#FB923C] font-bold whitespace-nowrap">第 {b.period} 節</td>
                           <td className="p-3 text-stone-800 font-medium">{b.courseContent}</td>
                           <td className="p-3">
-                            <span className="text-stone-900">{b.bookerName}</span>
-                            {b.userName && <span className="text-xs text-stone-500 block mt-0.5">使用者: {b.userName}</span>}
+                            <div className="flex flex-col">
+                              <span className={clsx("font-semibold", style.text)}>{b.bookerName}</span>
+                              {b.userName && <span className="text-xs text-stone-500 mt-0.5">使用者: {b.userName}</span>}
+                            </div>
                           </td>
                           <td className="p-3 text-center">
                              {canEdit ? (
