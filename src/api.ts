@@ -124,6 +124,11 @@ async function handleMockAction(action: string, payload: any) {
       saveDb(db);
       return { success: true };
     }
+    case "deleteUserBookings": {
+      db.bookings = db.bookings.filter((b: any) => b.bookerName !== payload.targetUser);
+      saveDb(db);
+      return { success: true };
+    }
     case "deleteAllBookings": {
       db.bookings = [];
       saveDb(db);
@@ -141,21 +146,17 @@ export async function apiCall(action: string, payload: any = {}): Promise<any> {
 
   try {
     // Standard fetch with JSON body triggers a CORS pre-flight (OPTIONS) request, which GAS famously struggles with.
-    // To completely bypass CORS, we must send a "Simple Request" by using Content-Type: text/plain or x-www-form-urlencoded.
-    // By packing the payload inside Google Apps Script's preferred POST syntax (x-www-form-urlencoded), it skips the OPTIONS check entirely.
+    // To completely bypass CORS, we must send a "Simple Request" by using Content-Type: text/plain
     const requestData = JSON.stringify({ action, ...payload });
 
     const response = await fetch(GAS_URL, {
       method: 'POST',
       body: requestData,
-      // No custom headers to ensure "Simple Request"
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
     });
     
-    // Check if redirect response (though fetch handles this mostly invisible, if manual 302 catch is needed)
-    if (!response.ok && response.type === 'opaque') {
-       throw new Error("CORS Opaque Response - Vercel will act as proxy later");
-    }
-
     const rawText = await response.text();
     let result;
     try {
@@ -166,9 +167,9 @@ export async function apiCall(action: string, payload: any = {}): Promise<any> {
     }
 
     return result;
-  } catch (err) {
+  } catch (err: any) {
     console.error("API Error", err);
-    throw new Error("網路請求被瀏覽器擋下 (CORS/Preflight 失敗)，請確保網址正確且沒有自訂標頭。");
+    throw new Error(err.message || "網路請求被瀏覽器擋下 (CORS/Preflight 失敗)，請確保網址正確且沒有自訂標頭。");
   }
 }
 

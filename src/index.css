@@ -9,3 +9,15 @@ body {
   font-family: var(--font-sans);
   background-color: #F5F5F4; /* Wait, using tailwind bg class in app is fine */
 }
+
+/* Custom Scrollbar for small lists */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 10px;
+}
